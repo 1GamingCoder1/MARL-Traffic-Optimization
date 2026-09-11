@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<routes>
+
+    <vType
+        id="car"
+        accel="2.6"
+        decel="4.5"
+        sigma="0.5"
+        length="5"
+        minGap="2.5"
+        maxSpeed="13.9"
+        guiShape="passenger"/>
+
+    <route id="west_east_top"
+           edges="W1_I1 I1_I2 I2_E1"/>
+
+    <route id="east_west_top"
+           edges="E1_I2 I2_I1 I1_W1"/>
+
+    <route id="west_east_bottom"
+           edges="W2_I3 I3_I4 I4_E2"/>
+
+    <route id="east_west_bottom"
+           edges="E2_I4 I4_I3 I3_W2"/>
+
+    <route id="north_south_left"
+           edges="N1_I1 I1_I3 I3_S1"/>
+
+    <route id="south_north_left"
+           edges="S1_I3 I3_I1 I1_N1"/>
+
+    <route id="north_south_right"
+           edges="N2_I2 I2_I4 I4_S2"/>
+
+    <route id="south_north_right"
+           edges="S2_I4 I4_I2 I2_N2"/>
+
+    <flow id="flow1"
+          type="car"
+          route="west_east_top"
+          begin="0"
+          end="3600"
+          period="8"/>
+
+    <flow id="flow2"
+          type="car"
+          route="east_west_top"
+          begin="0"
+          end="3600"
+          period="10"/>
+
+    <flow id="flow3"
+          type="car"
+          route="west_east_bottom"
+          begin="0"
+          end="3600"
+          period="9"/>
+
+    <flow id="flow4"
+          type="car"
+          route="east_west_bottom"
+          begin="0"
+          end="3600"
+          period="11"/>
+
+    <flow id="flow5"
+          type="car"
+          route="north_south_left"
+          begin="0"
+          end="3600"
+          period="7"/>
+
+    <flow id="flow6"
+          type="car"
+          route="south_north_left"
+          begin="0"
+          end="3600"
+          period="9"/>
+
+    <flow id="flow7"
+          type="car"
+          route="north_south_right"
+          begin="0"
+          end="3600"
+          period="8"/>
+
+    <flow id="flow8"
+          type="car"
+          route="south_north_right"
+          begin="0"
+          end="3600"
+          period="10"/>
+
+</routes>
