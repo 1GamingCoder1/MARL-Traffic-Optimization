@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration>
+
+    <input>
+        <net-file value="../realistic_network/realistic.net.xml"/>
+        <route-files value="../realistic_routes/realistic.rou.xml"/>
+    </input>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+
+    <processing>
+        <time-to-teleport value="-1"/>
+        <collision.action value="warn"/>
+    </processing>
+
+    <report>
+        <verbose value="false"/>
+        <duration-log.statistics value="true"/>
+    </report>
+
+</configuration>

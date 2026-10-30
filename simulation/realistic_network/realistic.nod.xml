@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<nodes>
+
+    <!-- =========================
+         FOUR SIGNALIZED JUNCTIONS
+         ========================= -->
+
+    <node id="I1"
+          x="0"
+          y="250"
+          type="traffic_light"/>
+
+    <node id="I2"
+          x="500"
+          y="250"
+          type="traffic_light"/>
+
+    <node id="I3"
+          x="0"
+          y="-250"
+          type="traffic_light"/>
+
+    <node id="I4"
+          x="500"
+          y="-250"
+          type="traffic_light"/>
+
+
+    <!-- =========================
+         WEST APPROACHES
+         ========================= -->
+
+    <node id="W1"
+          x="-600"
+          y="250"
+          type="priority"/>
+
+    <node id="W2"
+          x="-600"
+          y="-250"
+          type="priority"/>
+
+
+    <!-- =========================
+         EAST APPROACHES
+         ========================= -->
+
+    <node id="E1"
+          x="1100"
+          y="250"
+          type="priority"/>
+
+    <node id="E2"
+          x="1100"
+          y="-250"
+          type="priority"/>
+
+
+    <!-- =========================
+         NORTH APPROACHES
+         ========================= -->
+
+    <node id="N1"
+          x="0"
+          y="850"
+          type="priority"/>
+
+    <node id="N2"
+          x="500"
+          y="850"
+          type="priority"/>
+
+
+    <!-- =========================
+         SOUTH APPROACHES
+         ========================= -->
+
+    <node id="S1"
+          x="0"
+          y="-850"
+          type="priority"/>
+
+    <node id="S2"
+          x="500"
+          y="-850"
+          type="priority"/>
+
+</nodes>

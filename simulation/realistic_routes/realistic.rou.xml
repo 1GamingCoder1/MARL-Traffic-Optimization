@@ -1,0 +1,431 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<routes>
+
+    <!-- ========================================================= -->
+    <!-- VEHICLE TYPES                                             -->
+    <!-- ========================================================= -->
+
+    <vType
+        id="car"
+        vClass="passenger"
+        accel="2.6"
+        decel="4.5"
+        sigma="0.5"
+        length="4.5"
+        minGap="2.5"
+        maxSpeed="13.9"
+        color="0.2,0.6,1.0"
+    />
+
+    <vType
+        id="bus"
+        vClass="bus"
+        accel="1.2"
+        decel="4.0"
+        sigma="0.5"
+        length="12"
+        minGap="3"
+        maxSpeed="11.0"
+        color="1.0,0.7,0.1"
+    />
+
+    <vType
+        id="truck"
+        vClass="truck"
+        accel="1.0"
+        decel="3.5"
+        sigma="0.6"
+        length="12"
+        minGap="3"
+        maxSpeed="10.0"
+        color="0.5,0.5,0.5"
+    />
+
+
+    <!-- ========================================================= -->
+    <!-- MAIN STRAIGHT ROUTES                                      -->
+    <!-- ========================================================= -->
+
+    <!-- Top horizontal road -->
+    <route id="W1_E1" edges="W1_I1 I1_I2 I2_E1"/>
+    <route id="E1_W1" edges="E1_I2 I2_I1 I1_W1"/>
+
+    <!-- Bottom horizontal road -->
+    <route id="W2_E2" edges="W2_I3 I3_I4 I4_E2"/>
+    <route id="E2_W2" edges="E2_I4 I4_I3 I3_W2"/>
+
+    <!-- Left vertical road -->
+    <route id="N1_S1" edges="N1_I1 I1_I3 I3_S1"/>
+    <route id="S1_N1" edges="S1_I3 I3_I1 I1_N1"/>
+
+    <!-- Right vertical road -->
+    <route id="N2_S2" edges="N2_I2 I2_I4 I4_S2"/>
+    <route id="S2_N2" edges="S2_I4 I4_I2 I2_N2"/>
+
+
+    <!-- ========================================================= -->
+    <!-- TURNING ROUTES - INTERSECTION I1                         -->
+    <!-- ========================================================= -->
+
+    <!-- West -> North -->
+    <route id="W1_N1" edges="W1_I1 I1_N1"/>
+
+    <!-- West -> South -->
+    <route id="W1_S1" edges="W1_I1 I1_I3 I3_S1"/>
+
+    <!-- North -> East -->
+    <route id="N1_E1" edges="N1_I1 I1_I2 I2_E1"/>
+
+    <!-- North -> West -->
+    <route id="N1_W1" edges="N1_I1 I1_W1"/>
+
+    <!-- South -> West -->
+    <route id="S1_W1" edges="S1_I3 I3_I1 I1_W1"/>
+
+    <!-- South -> East -->
+    <route id="S1_E1" edges="S1_I3 I3_I1 I1_I2 I2_E1"/>
+
+    <!-- East -> South -->
+    <route id="E1_S1" edges="E1_I2 I2_I1 I1_I3 I3_S1"/>
+
+    <!-- East -> North -->
+    <route id="E1_N1" edges="E1_I2 I2_I1 I1_N1"/>
+
+
+    <!-- ========================================================= -->
+    <!-- TURNING ROUTES - INTERSECTION I2                         -->
+    <!-- ========================================================= -->
+
+    <!-- West -> North -->
+    <route id="W1_N2" edges="W1_I1 I1_I2 I2_N2"/>
+
+    <!-- West -> South -->
+    <route id="W1_S2" edges="W1_I1 I1_I2 I2_I4 I4_S2"/>
+
+    <!-- North -> East -->
+    <route id="N2_E1" edges="N2_I2 I2_E1"/>
+
+    <!-- North -> West -->
+    <route id="N2_W1" edges="N2_I2 I2_I1 I1_W1"/>
+
+    <!-- South -> West -->
+    <route id="S2_W1" edges="S2_I4 I4_I2 I2_I1 I1_W1"/>
+
+    <!-- South -> East -->
+    <route id="S2_E1" edges="S2_I4 I4_I2 I2_E1"/>
+
+    <!-- East -> South -->
+    <route id="E1_S2" edges="E1_I2 I2_I4 I4_S2"/>
+
+    <!-- East -> North -->
+    <route id="E1_N2" edges="E1_I2 I2_N2"/>
+
+
+    <!-- ========================================================= -->
+    <!-- TURNING ROUTES - INTERSECTION I3                         -->
+    <!-- ========================================================= -->
+
+    <!-- West -> North -->
+    <route id="W2_N1" edges="W2_I3 I3_I1 I1_N1"/>
+
+    <!-- West -> South -->
+    <route id="W2_S1" edges="W2_I3 I3_S1"/>
+
+    <!-- North -> East -->
+    <route id="N1_E2" edges="N1_I1 I1_I3 I3_I4 I4_E2"/>
+
+    <!-- North -> West -->
+    <route id="N1_W2" edges="N1_I1 I1_I3 I3_W2"/>
+
+    <!-- South -> West -->
+    <route id="S1_W2" edges="S1_I3 I3_W2"/>
+
+    <!-- South -> East -->
+    <route id="S1_E2" edges="S1_I3 I3_I4 I4_E2"/>
+
+    <!-- East -> South -->
+    <route id="E2_S1" edges="E2_I4 I4_I3 I3_S1"/>
+
+    <!-- East -> North -->
+    <route id="E2_N1" edges="E2_I4 I4_I3 I3_I1 I1_N1"/>
+
+
+    <!-- ========================================================= -->
+    <!-- TURNING ROUTES - INTERSECTION I4                         -->
+    <!-- ========================================================= -->
+
+    <!-- West -> North -->
+    <route id="W2_N2" edges="W2_I3 I3_I4 I4_I2 I2_N2"/>
+
+    <!-- West -> South -->
+    <route id="W2_S2" edges="W2_I3 I3_I4 I4_S2"/>
+
+    <!-- North -> East -->
+    <route id="N2_E2" edges="N2_I2 I2_I4 I4_E2"/>
+
+    <!-- North -> West -->
+    <route id="N2_W2" edges="N2_I2 I2_I4 I4_I3 I3_W2"/>
+
+    <!-- South -> West -->
+    <route id="S2_W2" edges="S2_I4 I4_I3 I3_W2"/>
+
+    <!-- South -> East -->
+    <route id="S2_E2" edges="S2_I4 I4_E2"/>
+
+    <!-- East -> South -->
+    <route id="E2_S2" edges="E2_I4 I4_S2"/>
+
+    <!-- East -> North -->
+    <route id="E2_N2" edges="E2_I4 I4_I2 I2_N2"/>
+
+
+    <!-- ========================================================= -->
+    <!-- HEAVY STRAIGHT TRAFFIC                                    -->
+    <!-- ========================================================= -->
+
+    <!-- Top horizontal -->
+
+    <flow
+        id="flow_W1_E1"
+        type="car"
+        route="W1_E1"
+        begin="0"
+        end="3600"
+        period="3.5"
+        departLane="best"
+        departSpeed="max"
+    />
+
+    <flow
+        id="flow_E1_W1"
+        type="car"
+        route="E1_W1"
+        begin="0"
+        end="3600"
+        period="4"
+        departLane="best"
+        departSpeed="max"
+    />
+
+
+    <!-- Bottom horizontal -->
+
+    <flow
+        id="flow_W2_E2"
+        type="car"
+        route="W2_E2"
+        begin="0"
+        end="3600"
+        period="4"
+        departLane="best"
+        departSpeed="max"
+    />
+
+    <flow
+        id="flow_E2_W2"
+        type="car"
+        route="E2_W2"
+        begin="0"
+        end="3600"
+        period="4.5"
+        departLane="best"
+        departSpeed="max"
+    />
+
+
+    <!-- Left vertical -->
+
+    <flow
+        id="flow_N1_S1"
+        type="car"
+        route="N1_S1"
+        begin="0"
+        end="3600"
+        period="4"
+        departLane="best"
+        departSpeed="max"
+    />
+
+    <flow
+        id="flow_S1_N1"
+        type="car"
+        route="S1_N1"
+        begin="0"
+        end="3600"
+        period="4"
+        departLane="best"
+        departSpeed="max"
+    />
+
+
+    <!-- Right vertical -->
+
+    <flow
+        id="flow_N2_S2"
+        type="car"
+        route="N2_S2"
+        begin="0"
+        end="3600"
+        period="4"
+        departLane="best"
+        departSpeed="max"
+    />
+
+    <flow
+        id="flow_S2_N2"
+        type="car"
+        route="S2_N2"
+        begin="0"
+        end="3600"
+        period="4.5"
+        departLane="best"
+        departSpeed="max"
+    />
+
+
+    <!-- ========================================================= -->
+    <!-- TURNING TRAFFIC                                          -->
+    <!-- ========================================================= -->
+
+    <flow
+        id="turn_W1_N1"
+        type="car"
+        route="W1_N1"
+        begin="0"
+        end="3600"
+        period="10"
+        departLane="best"
+    />
+
+    <flow
+        id="turn_W1_S1"
+        type="car"
+        route="W1_S1"
+        begin="0"
+        end="3600"
+        period="9"
+        departLane="best"
+    />
+
+    <flow
+        id="turn_N1_E1"
+        type="car"
+        route="N1_E1"
+        begin="0"
+        end="3600"
+        period="11"
+        departLane="best"
+    />
+
+    <flow
+        id="turn_N1_W1"
+        type="car"
+        route="N1_W1"
+        begin="0"
+        end="3600"
+        period="13"
+        departLane="best"
+    />
+
+    <flow
+        id="turn_E1_S1"
+        type="car"
+        route="E1_S1"
+        begin="0"
+        end="3600"
+        period="10"
+        departLane="best"
+    />
+
+    <flow
+        id="turn_E1_N1"
+        type="car"
+        route="E1_N1"
+        begin="0"
+        end="3600"
+        period="13"
+        departLane="best"
+    />
+
+
+    <!-- ========================================================= -->
+    <!-- BUS TRAFFIC                                               -->
+    <!-- ========================================================= -->
+
+    <flow
+        id="bus_W1_E1"
+        type="bus"
+        route="W1_E1"
+        begin="0"
+        end="3600"
+        period="35"
+        departLane="best"
+    />
+
+    <flow
+        id="bus_E1_W1"
+        type="bus"
+        route="E1_W1"
+        begin="0"
+        end="3600"
+        period="40"
+        departLane="best"
+    />
+
+    <flow
+        id="bus_N1_S1"
+        type="bus"
+        route="N1_S1"
+        begin="0"
+        end="3600"
+        period="45"
+        departLane="best"
+    />
+
+    <flow
+        id="bus_S2_N2"
+        type="bus"
+        route="S2_N2"
+        begin="0"
+        end="3600"
+        period="50"
+        departLane="best"
+    />
+
+
+    <!-- ========================================================= -->
+    <!-- TRUCK TRAFFIC                                             -->
+    <!-- ========================================================= -->
+
+    <flow
+        id="truck_W2_E2"
+        type="truck"
+        route="W2_E2"
+        begin="0"
+        end="3600"
+        period="30"
+        departLane="best"
+    />
+
+    <flow
+        id="truck_E2_W2"
+        type="truck"
+        route="E2_W2"
+        begin="0"
+        end="3600"
+        period="35"
+        departLane="best"
+    />
+
+    <flow
+        id="truck_N2_S2"
+        type="truck"
+        route="N2_S2"
+        begin="0"
+        end="3600"
+        period="40"
+        departLane="best"
+    />
+
+</routes>
