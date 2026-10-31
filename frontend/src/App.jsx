@@ -1,5 +1,6 @@
-// STEP 20 — Ultra-Realistic 3D Graphics, Camera Presets, Interactive Controls & Vehicle Inspector
+// STEP 21 — Optimized 3D Traffic Simulation & Performance Analytics
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,24 +12,56 @@ import * as THREE from "three";
 import {
   Canvas,
   useFrame,
+  useThree,
 } from "@react-three/fiber";
 
 import {
   OrbitControls,
 } from "@react-three/drei";
+import AnalyticsPage from "./AnalyticsPage.jsx";
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
 
 const WS_URL = "ws://127.0.0.1:8000/ws/simulation";
-const MAX_RENDER_VEHICLES = 140;
+const MAX_RENDER_VEHICLES = 120;
 
 const INTERSECTIONS = {
   I1: [0, 250],
   I2: [500, 250],
   I3: [0, -250],
   I4: [500, -250],
+};
+
+// Camera presets are starting viewpoints only. OrbitControls remain enabled
+// after every preset so users can freely rotate, pan and zoom from that view.
+const CAMERA_PRESETS = {
+  OVERVIEW: {
+    label: "OVERVIEW",
+    position: [20, 42, 62],
+    target: [20, 0, 0],
+  },
+  I1: {
+    label: "JUNCTION 1",
+    position: [12, 19, 5],
+    target: [0, 0, -20],
+  },
+  I2: {
+    label: "JUNCTION 2",
+    position: [52, 19, 5],
+    target: [40, 0, -20],
+  },
+  I3: {
+    label: "JUNCTION 3",
+    position: [12, 19, 45],
+    target: [0, 0, 20],
+  },
+  I4: {
+    label: "JUNCTION 4",
+    position: [52, 19, 45],
+    target: [40, 0, 20],
+  },
 };
 
 const SCALE = 0.08;
@@ -44,43 +77,6 @@ function sumoToThree(x, y, height = 0) {
 function originalToThree(x, y, height = 0) {
   return [Number(x) * SCALE, height, -Number(y) * SCALE];
 }
-
-// ============================================================
-// CAMERA PRESETS
-// ============================================================
-
-const CAMERA_PRESETS = {
-  ORBIT: {
-    label: "Overview Orbit",
-    position: [20, 42, 62],
-    target: [20, 0, 0],
-  },
-  TOP: {
-    label: "Top-Down Map",
-    position: [20, 95, 0.1],
-    target: [20, 0, 0],
-  },
-  I1: {
-    label: "Junction I1 (NW)",
-    position: [-10, 14, -6],
-    target: [0, 0, -20],
-  },
-  I2: {
-    label: "Junction I2 (NE)",
-    position: [50, 14, -6],
-    target: [40, 0, -20],
-  },
-  I3: {
-    label: "Junction I3 (SW)",
-    position: [-10, 14, 34],
-    target: [0, 0, 20],
-  },
-  I4: {
-    label: "Junction I4 (SE)",
-    position: [50, 14, 34],
-    target: [40, 0, 20],
-  },
-};
 
 // ============================================================
 // LIGHTING THEMES
@@ -168,9 +164,23 @@ function Road({ from, to }) {
 
   return (
     <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
+      <mesh position={[0, -0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[length + 0.55, roadWidth + 0.65]} />
+        <meshStandardMaterial color="#42494e" roughness={0.96} />
+      </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[length, roadWidth]} />
-        <meshStandardMaterial color="#262a2e" roughness={0.88} metalness={0.08} />
+        <meshStandardMaterial color="#262a2e" roughness={0.94} metalness={0.035} />
+      </mesh>
+
+      {/* Raised-looking concrete footpaths along both sides of each road. */}
+      <mesh position={[0, -0.006, roadHalfWidth + 0.215]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[length + 0.25, 0.40]} />
+        <meshStandardMaterial color="#666d70" roughness={0.96} />
+      </mesh>
+      <mesh position={[0, -0.006, -roadHalfWidth - 0.215]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[length + 0.25, 0.40]} />
+        <meshStandardMaterial color="#666d70" roughness={0.96} />
       </mesh>
 
       {/* Center Double Yellow Divider */}
@@ -289,16 +299,12 @@ function IntersectionDetails() {
   );
 }
 
-function Intersection({ id, position, onSelectIntersection }) {
+function Intersection({ id, position }) {
   const point = originalToThree(position[0], position[1], 0);
 
   return (
     <group
       position={[point[0], 0, point[2]]}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (onSelectIntersection) onSelectIntersection(id);
-      }}
     >
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[5.2, 5.2]} />
@@ -376,13 +382,7 @@ function TrafficLight({ position, rotation = 0, state = "r" }) {
         />
       </mesh>
 
-      {/* Real-time Signal Glow Light */}
-      <pointLight
-        position={[0, activeY, 0.25]}
-        color={activeColor}
-        intensity={0.85}
-        distance={4.5}
-      />
+      {/* Emissive lenses provide the signal glow without expensive dynamic point lights. */}
     </group>
   );
 }
@@ -465,7 +465,7 @@ function getVehicleColor(vehicleId) {
 function Wheel({ position, radius = 0.075, width = 0.07 }) {
   return (
     <group position={position} rotation={[0, 0, Math.PI / 2]}>
-      <mesh castShadow>
+      <mesh>
         <cylinderGeometry args={[radius, radius, width, 16]} />
         <meshStandardMaterial color="#101214" roughness={0.82} metalness={0.08} />
       </mesh>
@@ -481,7 +481,8 @@ function Wheel({ position, radius = 0.075, width = 0.07 }) {
 // VEHICLE WITH DYNAMIC BRAKE LIGHTS, BLINKERS & SELECTION RING
 // ============================================================
 
-function Vehicle({ vehicle, isSelected, onSelect }) {
+const Vehicle = React.memo(function Vehicle({ vehicleId, vehicleRegistryRef, simulationSpeedRef, isSelected, onSelect }) {
+  const vehicle = vehicleRegistryRef.current.get(vehicleId) || {};
   let x = Number(vehicle?.renderX);
   let z = Number(vehicle?.renderZ);
 
@@ -496,8 +497,6 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
   const laneId = String(vehicle?.lane ?? "");
   const speed = Number(vehicle?.speed ?? 0);
   const braking = Boolean(vehicle?.braking) || speed < 0.4;
-  const blinkerLeft = Boolean(vehicle?.blinkerLeft);
-  const blinkerRight = Boolean(vehicle?.blinkerRight);
 
   const type = String(vehicle?.type || "car").toLowerCase();
   const color = getVehicleColor(vehicle?.id);
@@ -539,30 +538,52 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
   const lastLaneRef = useRef(laneId);
   const lastAngleRef = useRef(normalizedSumoAngle);
   const targetAngleRef = useRef(angle);
-
-  targetRef.current.set(x, 0.2, z);
-  targetAngleRef.current = angle;
-
-  useEffect(() => {
-    if (!groupRef.current) return;
-    const laneChanged = lastLaneRef.current !== laneId;
-    const angleDelta = Math.abs(((normalizedSumoAngle - lastAngleRef.current + 180) % 360) - 180);
-
-    if (laneChanged && angleDelta > 70) {
-      groupRef.current.position.set(x, 0.2, z);
-    }
-
-    targetAngleRef.current = angle;
-    lastLaneRef.current = laneId;
-    lastAngleRef.current = normalizedSumoAngle;
-  }, [laneId, normalizedSumoAngle, angle, x, z]);
+  const brakeLeftMaterialRef = useRef(null);
+  const brakeRightMaterialRef = useRef(null);
+  const blinkerLeftRef = useRef(null);
+  const blinkerRightRef = useRef(null);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
+    const latestVehicle = vehicleRegistryRef.current.get(vehicleId);
+    if (latestVehicle) {
+      const nextX = Number(latestVehicle.renderX);
+      const nextZ = Number(latestVehicle.renderZ);
+      if (Number.isFinite(nextX) && Number.isFinite(nextZ)) {
+        targetRef.current.set(nextX, 0.2, nextZ);
+      }
+      const nextLane = String(latestVehicle.lane ?? "");
+      const nextSumoAngle = Number(latestVehicle.angle ?? 0);
+      const nextNormalizedAngle = ((nextSumoAngle % 360) + 360) % 360;
+      const nextAngle = Math.PI - THREE.MathUtils.degToRad(nextSumoAngle);
+      const angleDelta = Math.abs(((nextNormalizedAngle - lastAngleRef.current + 180) % 360) - 180);
+      if (nextLane !== lastLaneRef.current && angleDelta > 70) {
+        groupRef.current.position.copy(targetRef.current);
+      }
+      lastLaneRef.current = nextLane;
+      lastAngleRef.current = nextNormalizedAngle;
+      targetAngleRef.current = nextAngle;
+
+      const isBraking = Boolean(latestVehicle.braking) || Number(latestVehicle.speed || 0) < 0.4;
+      [brakeLeftMaterialRef.current, brakeRightMaterialRef.current].forEach((material) => {
+        if (!material) return;
+        material.color.set(isBraking ? "#ff3b3b" : "#801317");
+        material.emissiveIntensity = isBraking ? 4.8 : 0.7;
+      });
+      const blinkOn = Math.floor(state.clock.elapsedTime / 0.28) % 2 === 0;
+      if (blinkerLeftRef.current) blinkerLeftRef.current.visible = Boolean(latestVehicle.blinkerLeft) && blinkOn;
+      if (blinkerRightRef.current) blinkerRightRef.current.visible = Boolean(latestVehicle.blinkerRight) && blinkOn;
+    }
+
     const currentPosition = groupRef.current.position;
     const targetPosition = targetRef.current;
     const distance = currentPosition.distanceTo(targetPosition);
+    const simulationRate = THREE.MathUtils.clamp(
+      Number(simulationSpeedRef.current || 1),
+      0.25,
+      4
+    );
 
     if (!initializedRef.current) {
       currentPosition.copy(targetPosition);
@@ -571,11 +592,15 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       return;
     }
 
-    if (distance > 0.85) {
+    // Normal SUMO steps can move a vehicle over one rendered world unit.
+    // Snapping at that distance made every ordinary update look like a jump.
+    // Only snap for genuine discontinuities (e.g. teleports/reset); otherwise
+    // interpolate at a rate scaled to the selected simulation playback speed.
+    if (distance > 8) {
       currentPosition.copy(targetPosition);
     } else {
-      const normalizedDistance = THREE.MathUtils.clamp(distance / 0.45, 0, 1);
-      const movementSpeed = THREE.MathUtils.lerp(28, 42, normalizedDistance);
+      const normalizedDistance = THREE.MathUtils.clamp(distance / 1.25, 0, 1);
+      const movementSpeed = THREE.MathUtils.lerp(28, 42, normalizedDistance) * simulationRate;
       const smoothing = 1 - Math.exp(-movementSpeed * Math.max(delta, 0.001));
       currentPosition.lerp(targetPosition, smoothing);
     }
@@ -590,7 +615,7 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       18,
       28,
       THREE.MathUtils.clamp(Math.abs(angleDifference) / (Math.PI / 2), 0, 1)
-    );
+    ) * simulationRate;
     const rotationSmoothing = 1 - Math.exp(-rotationSpeed * Math.max(delta, 0.001));
     groupRef.current.rotation.y += angleDifference * rotationSmoothing;
   });
@@ -619,7 +644,7 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       )}
 
       {/* Lower Body / Chassis */}
-      <mesh position={[0, bodyY, 0]} castShadow receiveShadow>
+      <mesh position={[0, bodyY, 0]}>
         <boxGeometry args={[width, height * 0.52, length * 0.94]} />
         <meshStandardMaterial color={color} roughness={0.26} metalness={0.32} />
       </mesh>
@@ -627,11 +652,11 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       {/* Car-Specific Body */}
       {!isBus && !isTruck && (
         <>
-          <mesh position={[0, height * 0.24, length * 0.3]} castShadow>
+          <mesh position={[0, height * 0.24, length * 0.3]}>
             <boxGeometry args={[width * 0.9, height * 0.24, length * 0.25]} />
             <meshStandardMaterial color={color} roughness={0.25} metalness={0.32} />
           </mesh>
-          <mesh position={[0, height * 0.42, -length * 0.02]} castShadow>
+          <mesh position={[0, height * 0.42, -length * 0.02]}>
             <boxGeometry args={[width * 0.78, height * 0.58, length * 0.48]} />
             <meshStandardMaterial color={color} roughness={0.25} metalness={0.28} />
           </mesh>
@@ -653,7 +678,7 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       {/* Bus Body */}
       {isBus && (
         <>
-          <mesh position={[0, height * 0.27, -length * 0.02]} castShadow>
+          <mesh position={[0, height * 0.27, -length * 0.02]}>
             <boxGeometry args={[width * 0.98, height * 0.52, length * 0.94]} />
             <meshStandardMaterial color={color} roughness={0.32} metalness={0.22} />
           </mesh>
@@ -667,11 +692,11 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       {/* Truck Body */}
       {isTruck && (
         <>
-          <mesh position={[0, height * 0.32, length * 0.28]} castShadow>
+          <mesh position={[0, height * 0.32, length * 0.28]}>
             <boxGeometry args={[width * 0.94, height * 0.62, length * 0.34]} />
             <meshStandardMaterial color={color} roughness={0.3} metalness={0.25} />
           </mesh>
-          <mesh position={[0, height * 0.42, -length * 0.16]} castShadow>
+          <mesh position={[0, height * 0.42, -length * 0.16]}>
             <boxGeometry args={[width * 0.96, height * 0.78, length * 0.55]} />
             <meshStandardMaterial color="#cfd3d7" roughness={0.54} metalness={0.1} />
           </mesh>
@@ -710,6 +735,7 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       <mesh position={[-width * 0.29, height * 0.04, -length * 0.505]}>
         <boxGeometry args={[width * 0.22, height * 0.16, 0.024]} />
         <meshStandardMaterial
+          ref={brakeLeftMaterialRef}
           color={braking ? "#ff3b3b" : "#801317"}
           emissive="#ff0000"
           emissiveIntensity={braking ? 4.8 : 0.7}
@@ -718,6 +744,7 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       <mesh position={[width * 0.29, height * 0.04, -length * 0.505]}>
         <boxGeometry args={[width * 0.22, height * 0.16, 0.024]} />
         <meshStandardMaterial
+          ref={brakeRightMaterialRef}
           color={braking ? "#ff3b3b" : "#801317"}
           emissive="#ff0000"
           emissiveIntensity={braking ? 4.8 : 0.7}
@@ -725,133 +752,357 @@ function Vehicle({ vehicle, isSelected, onSelect }) {
       </mesh>
 
       {/* Turn Signal Blinkers */}
-      {blinkerLeft && blinkOn && (
-        <mesh position={[width * 0.42, height * 0.05, length * 0.49]}>
-          <sphereGeometry args={[0.028, 8, 8]} />
-          <meshStandardMaterial color="#ffaa00" emissive="#ffaa00" emissiveIntensity={4} />
-        </mesh>
-      )}
-      {blinkerRight && blinkOn && (
-        <mesh position={[-width * 0.42, height * 0.05, length * 0.49]}>
-          <sphereGeometry args={[0.028, 8, 8]} />
-          <meshStandardMaterial color="#ffaa00" emissive="#ffaa00" emissiveIntensity={4} />
-        </mesh>
-      )}
+      <mesh ref={blinkerLeftRef} visible={false} position={[width * 0.42, height * 0.05, length * 0.49]}>
+        <sphereGeometry args={[0.028, 8, 8]} />
+        <meshBasicMaterial color="#ffaa00" />
+      </mesh>
+      <mesh ref={blinkerRightRef} visible={false} position={[-width * 0.42, height * 0.05, length * 0.49]}>
+        <sphereGeometry args={[0.028, 8, 8]} />
+        <meshBasicMaterial color="#ffaa00" />
+      </mesh>
     </group>
   );
-}
-
+}, (previous, next) => previous.vehicleId === next.vehicleId && previous.simulationSpeedRef === next.simulationSpeedRef && previous.isSelected === next.isSelected && previous.onSelect === next.onSelect);
 // ============================================================
 // ENVIRONMENT & STREET LIGHTS
 // ============================================================
 
-function EnvironmentTree({ position, scale = 1 }) {
-  return (
-    <group position={position} scale={[scale, scale, scale]}>
-      <mesh position={[0, 0.48, 0]} castShadow>
-        <cylinderGeometry args={[0.12, 0.18, 0.96, 7]} />
-        <meshStandardMaterial color="#514337" roughness={0.92} />
-      </mesh>
-      <mesh position={[0, 1.12, 0]} castShadow>
-        <sphereGeometry args={[0.62, 10, 8]} />
-        <meshStandardMaterial color="#31523a" roughness={0.92} />
-      </mesh>
-      <mesh position={[0.3, 1.35, 0.08]} castShadow>
-        <sphereGeometry args={[0.43, 9, 7]} />
-        <meshStandardMaterial color="#3d6445" roughness={0.92} />
-      </mesh>
-    </group>
-  );
+function writeInstanceBatch(ref, transforms) {
+  const mesh = ref.current;
+  if (!mesh) return;
+  const object = new THREE.Object3D();
+  const color = new THREE.Color();
+  transforms.forEach((item, index) => {
+    object.position.set(...item.position);
+    object.rotation.set(...(item.rotation || [0, 0, 0]));
+    object.scale.set(...item.scale);
+    object.updateMatrix();
+    mesh.setMatrixAt(index, object.matrix);
+    if (item.color) mesh.setColorAt(index, color.set(item.color));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
 }
 
-function EnvironmentBuilding({ position, width, depth, height, variant = 0, windowEmissive = 0.05 }) {
-  const palettes = [
-    { body: "#56616a", panel: "#3f4a52", glass: "#86a9bd", roof: "#2f353a" },
-    { body: "#6b625b", panel: "#514a45", glass: "#ffd180", roof: "#35312e" },
-    { body: "#4f6060", panel: "#394848", glass: "#79a6a8", roof: "#293333" },
-    { body: "#665f70", panel: "#4b4653", glass: "#9aa6c0", roof: "#302d38" },
+function rotatedWorldPosition(base, angle, local) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return [
+    base[0] + local[0] * c + local[2] * s,
+    base[1] + local[1],
+    base[2] - local[0] * s + local[2] * c,
   ];
-  const palette = palettes[Math.abs(Number(variant) || 0) % palettes.length];
-  const windowRows = Math.min(Math.max(2, Math.round(height / 1.55)), 5);
-  const windowCols = 3;
-
-  return (
-    <group position={position}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color={palette.body} roughness={0.76} />
-      </mesh>
-      <mesh position={[0, height * 0.53, depth * 0.506]}>
-        <boxGeometry args={[width * 0.88, height * 0.82, depth * 0.025]} />
-        <meshStandardMaterial color={palette.panel} roughness={0.82} />
-      </mesh>
-
-      {Array.from({ length: windowRows }).flatMap((_, row) =>
-        Array.from({ length: windowCols }).map((__, col) => {
-          const x = ((col - 1) / 1) * width * 0.29;
-          const y = height * (0.25 + (row / Math.max(windowRows - 1, 1)) * 0.58);
-          return (
-            <mesh key={`fw-${row}-${col}`} position={[x, y, depth * 0.52]}>
-              <boxGeometry args={[width * 0.13, height * 0.075, 0.035]} />
-              <meshStandardMaterial
-                color={palette.glass}
-                emissive={palette.glass}
-                emissiveIntensity={windowEmissive}
-              />
-            </mesh>
-          );
-        })
-      )}
-
-      <mesh position={[0, height * 0.94, 0]}>
-        <boxGeometry args={[width * 1.04, 0.1, depth * 1.04]} />
-        <meshStandardMaterial color={palette.roof} roughness={0.82} />
-      </mesh>
-    </group>
-  );
 }
 
-function StreetLamp({ position, rotation = 0, scale = 1, lampIntensity = 1.4 }) {
-  return (
-    <group position={position} rotation={[0, rotation, 0]} scale={[scale, scale, scale]}>
-      <mesh position={[0, 1.45, 0]} castShadow>
-        <cylinderGeometry args={[0.045, 0.07, 2.9, 8]} />
-        <meshStandardMaterial color="#30353a" roughness={0.72} metalness={0.55} />
-      </mesh>
-      <mesh position={[0.28, 2.82, 0]} rotation={[0, 0, -0.12]}>
-        <boxGeometry args={[0.58, 0.07, 0.07]} />
-        <meshStandardMaterial color="#30353a" roughness={0.68} metalness={0.55} />
-      </mesh>
-      <mesh position={[0.55, 2.78, 0]}>
-        <sphereGeometry args={[0.105, 12, 8]} />
-        <meshStandardMaterial
-          color="#fff1c4"
-          emissive="#fff1c4"
-          emissiveIntensity={lampIntensity}
-        />
-      </mesh>
-    </group>
-  );
-}
+function EnvironmentTreeField() {
+  const bedRef = useRef(null);
+  const trunkRef = useRef(null);
+  const crownRef = useRef(null);
+  const leftCrownRef = useRef(null);
+  const rightCrownRef = useRef(null);
 
-function SceneEnvironment({ windowEmissive }) {
+  useEffect(() => {
+    const variants = [
+      { dark: "#244c35", mid: "#356b43", light: "#4b8050" },
+      { dark: "#294b38", mid: "#3d704d", light: "#5a8a5b" },
+      { dark: "#36523a", mid: "#52774b", light: "#70945a" },
+    ];
+    const trees = TREE_LAYOUT.map((position, index) => ({
+      position,
+      scale: 0.82 + ((index * 7) % 5) * 0.085,
+      colors: variants[index % variants.length],
+    }));
+    writeInstanceBatch(bedRef, trees.map((tree) => ({
+      position: [tree.position[0], 0.11 * tree.scale, tree.position[2]],
+      rotation: [0, 0, 0], scale: [tree.scale, tree.scale, tree.scale],
+    })));
+    writeInstanceBatch(trunkRef, trees.map((tree) => ({
+      position: [tree.position[0], 0.98 * tree.scale, tree.position[2]],
+      rotation: [0, 0, 0], scale: [tree.scale, tree.scale, tree.scale],
+    })));
+    writeInstanceBatch(crownRef, trees.map((tree) => ({
+      position: [tree.position[0], 2.12 * tree.scale, tree.position[2]],
+      rotation: [0, 0, 0], scale: [0.79 * tree.scale, 0.79 * tree.scale, 0.79 * tree.scale],
+      color: tree.colors.dark,
+    })));
+    writeInstanceBatch(leftCrownRef, trees.map((tree) => ({
+      position: [tree.position[0] - 0.39 * tree.scale, 2.18 * tree.scale, tree.position[2] + 0.10 * tree.scale],
+      rotation: [0, 0, 0], scale: [0.56 * tree.scale, 0.56 * tree.scale, 0.56 * tree.scale],
+      color: tree.colors.mid,
+    })));
+    writeInstanceBatch(rightCrownRef, trees.map((tree) => ({
+      position: [tree.position[0] + 0.36 * tree.scale, 2.30 * tree.scale, tree.position[2] - 0.08 * tree.scale],
+      rotation: [0, 0, 0], scale: [0.53 * tree.scale, 0.53 * tree.scale, 0.53 * tree.scale],
+      color: tree.colors.light,
+    })));
+  }, []);
+
   return (
     <>
-      <EnvironmentTree position={[-34, 0, 17]} scale={1.05} />
-      <EnvironmentTree position={[-25, 0, 17]} scale={0.82} />
-      <EnvironmentTree position={[19, 0, 17]} scale={0.92} />
-      <EnvironmentTree position={[30, 0, 16]} scale={1.12} />
-      <EnvironmentTree position={[-34, 0, -17]} scale={0.9} />
-      <EnvironmentTree position={[-23, 0, -17]} scale={1.08} />
-      <EnvironmentTree position={[20, 0, -17]} scale={0.84} />
-      <EnvironmentTree position={[31, 0, -17]} scale={1.0} />
+      <instancedMesh ref={bedRef} args={[null, null, TREE_LAYOUT.length]}>
+        <cylinderGeometry args={[0.72, 0.78, 0.20, 12]} />
+        <meshStandardMaterial color="#555b55" roughness={0.94} />
+      </instancedMesh>
+      <instancedMesh ref={trunkRef} args={[null, null, TREE_LAYOUT.length]}>
+        <cylinderGeometry args={[0.105, 0.19, 1.78, 8]} />
+        <meshStandardMaterial color="#594333" roughness={0.96} />
+      </instancedMesh>
+      <instancedMesh ref={crownRef} args={[null, null, TREE_LAYOUT.length]}>
+        <icosahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh ref={leftCrownRef} args={[null, null, TREE_LAYOUT.length]}>
+        <icosahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+      <instancedMesh ref={rightCrownRef} args={[null, null, TREE_LAYOUT.length]}>
+        <icosahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial roughness={1} flatShading />
+      </instancedMesh>
+    </>
+  );
+}
 
-      <EnvironmentBuilding position={[-35, 0, 26]} width={5.8} depth={4.8} height={6.8} variant={0} windowEmissive={windowEmissive} />
-      <EnvironmentBuilding position={[-26, 0, 27]} width={4.4} depth={4.2} height={4.6} variant={1} windowEmissive={windowEmissive} />
-      <EnvironmentBuilding position={[22, 0, 27]} width={5.4} depth={4.7} height={6.0} variant={2} windowEmissive={windowEmissive} />
-      <EnvironmentBuilding position={[31, 0, 26]} width={4.6} depth={4.3} height={5.0} variant={3} windowEmissive={windowEmissive} />
-      <EnvironmentBuilding position={[-35, 0, -26]} width={5.0} depth={4.4} height={5.8} variant={2} windowEmissive={windowEmissive} />
-      <EnvironmentBuilding position={[30, 0, -26]} width={5.5} depth={4.6} height={6.3} variant={1} windowEmissive={windowEmissive} />
+function EnvironmentBuildingField({ windowEmissive }) {
+  const plinthRef = useRef(null);
+  const bodyRef = useRef(null);
+  const facadeRef = useRef(null);
+  const frameRef = useRef(null);
+  const glassRef = useRef(null);
+  const trimRef = useRef(null);
+  const entranceRef = useRef(null);
+  const signRef = useRef(null);
+  const roofRef = useRef(null);
+  const parapetRef = useRef(null);
+  const hvacRef = useRef(null);
+
+  useEffect(() => {
+    const palettes = [
+      { body: "#56616a", panel: "#3f4a52", glass: "#86b5ca", roof: "#2f353a", trim: "#a7b1b5" },
+      { body: "#6b625b", panel: "#514a45", glass: "#ffd18a", roof: "#35312e", trim: "#c3aa91" },
+      { body: "#4f6060", panel: "#394848", glass: "#83bdb9", roof: "#293333", trim: "#8ba9a2" },
+      { body: "#665f70", panel: "#4b4653", glass: "#aebcda", roof: "#302d38", trim: "#aca4bf" },
+      { body: "#716c61", panel: "#4d4d47", glass: "#9fc4d0", roof: "#393b3a", trim: "#c4bda9" },
+    ];
+    const transforms = (building, localPosition, scale, color) => ({
+      position: rotatedWorldPosition(building.position, building.rotation || 0, localPosition),
+      rotation: [0, building.rotation || 0, 0],
+      scale,
+      color,
+    });
+
+    const plinths = [];
+    const bodies = [];
+    const facades = [];
+    const frames = [];
+    const glass = [];
+    const trims = [];
+    const entrances = [];
+    const signs = [];
+    const roofs = [];
+    const parapets = [];
+    const hvac = [];
+
+    BUILDING_LAYOUT.forEach((building) => {
+      const palette = palettes[Math.abs(Number(building.variant) || 0) % palettes.length];
+      const [x, , z] = building.position;
+      const { width, depth, height } = building;
+      const facadeZ = depth * 0.505;
+      const rows = Math.min(Math.max(2, Math.round(height / 1.55)), 5);
+
+      plinths.push(transforms(building, [0, 0.18, 0], [width * 1.07, 0.36, depth * 1.07]));
+      bodies.push(transforms(building, [0, 0.36 + height / 2, 0], [width, height, depth], palette.body));
+      facades.push(transforms(building, [0, 0.36 + height * 0.53, facadeZ], [width * 0.92, height * 0.84, 0.045], palette.panel));
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < 3; col += 1) {
+          const wx = (col - 1) * width * 0.29;
+          const wy = 0.36 + height * (0.25 + (row / Math.max(rows - 1, 1)) * 0.56);
+          const frameW = width * 0.19;
+          const frameH = height * 0.105;
+          frames.push(transforms(building, [wx, wy, facadeZ + 0.035], [frameW, frameH, 0.055]));
+          glass.push(transforms(building, [wx, wy, facadeZ + 0.067], [frameW * 0.78, frameH * 0.72, 0.018], palette.glass));
+        }
+      }
+
+      trims.push(
+        transforms(building, [-width * 0.455, 0.36 + height * 0.53, facadeZ + 0.05], [0.10, height * 0.87, 0.10], palette.trim),
+        transforms(building, [width * 0.455, 0.36 + height * 0.53, facadeZ + 0.05], [0.10, height * 0.87, 0.10], palette.trim),
+      );
+      entrances.push(transforms(building, [0, 0.36 + 0.90, facadeZ + 0.06], [width * 0.44, 1.12, 0.09]));
+      signs.push(transforms(building, [0, 0.36 + 1.32, facadeZ + 0.115], [width * 0.50, 0.12, 0.035], palette.trim));
+      roofs.push(transforms(building, [0, 0.36 + height + 0.07, 0], [width * 1.06, 0.16, depth * 1.06], palette.roof));
+      parapets.push(transforms(building, [0, 0.36 + height + 0.20, depth * 0.49], [width * 1.02, 0.18, 0.12], palette.trim));
+      hvac.push(
+        transforms(building, [-width * 0.22, 0.36 + height + 0.34, -depth * 0.12], [width * 0.20, 0.42, depth * 0.20]),
+        transforms(building, [width * 0.23, 0.36 + height + 0.29, -depth * 0.12], [width * 0.16, 0.30, depth * 0.16]),
+      );
+    });
+
+    writeInstanceBatch(plinthRef, plinths);
+    writeInstanceBatch(bodyRef, bodies);
+    writeInstanceBatch(facadeRef, facades);
+    writeInstanceBatch(frameRef, frames);
+    writeInstanceBatch(glassRef, glass);
+    writeInstanceBatch(trimRef, trims);
+    writeInstanceBatch(entranceRef, entrances);
+    writeInstanceBatch(signRef, signs);
+    writeInstanceBatch(roofRef, roofs);
+    writeInstanceBatch(parapetRef, parapets);
+    writeInstanceBatch(hvacRef, hvac);
+  }, []);
+
+  const windowCount = BUILDING_LAYOUT.reduce((total, building) => {
+    const rows = Math.min(Math.max(2, Math.round(building.height / 1.55)), 5);
+    return total + rows * 3;
+  }, 0);
+
+  return (
+    <>
+      <instancedMesh ref={plinthRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="#777d7c" roughness={0.88} />
+      </instancedMesh>
+      <instancedMesh ref={bodyRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.78} metalness={0.08} />
+      </instancedMesh>
+      <instancedMesh ref={facadeRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.82} />
+      </instancedMesh>
+      <instancedMesh ref={frameRef} args={[null, null, windowCount]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="#202a30" roughness={0.4} metalness={0.35} />
+      </instancedMesh>
+      <instancedMesh ref={glassRef} args={[null, null, windowCount]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial emissive="#ffffff" emissiveIntensity={windowEmissive} roughness={0.16} metalness={0.32} />
+      </instancedMesh>
+      <instancedMesh ref={trimRef} args={[null, null, BUILDING_LAYOUT.length * 2]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.62} metalness={0.18} />
+      </instancedMesh>
+      <instancedMesh ref={entranceRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="#17252b" roughness={0.24} metalness={0.28} />
+      </instancedMesh>
+      <instancedMesh ref={signRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.65} />
+      </instancedMesh>
+      <instancedMesh ref={roofRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.86} />
+      </instancedMesh>
+      <instancedMesh ref={parapetRef} args={[null, null, BUILDING_LAYOUT.length]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial roughness={0.78} />
+      </instancedMesh>
+      <instancedMesh ref={hvacRef} args={[null, null, BUILDING_LAYOUT.length * 2]}>
+        <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="#858b8d" roughness={0.82} metalness={0.15} />
+      </instancedMesh>
+    </>
+  );
+}
+
+function StreetLampField({ lampIntensity }) {
+  const baseRef = useRef(null);
+  const poleRef = useRef(null);
+  const collarRef = useRef(null);
+  const armRef = useRef(null);
+  const housingRef = useRef(null);
+  const diffuserRef = useRef(null);
+  const capRef = useRef(null);
+
+  useEffect(() => {
+    const part = (lamp, localPosition, scale, localRotation = [0, 0, 0]) => ({
+      position: rotatedWorldPosition(lamp.position, lamp.rotation || 0, localPosition.map((v) => v * lamp.scale)),
+      rotation: [localRotation[0], (lamp.rotation || 0) + localRotation[1], localRotation[2]],
+      scale: scale.map((v) => v * lamp.scale),
+    });
+    writeInstanceBatch(baseRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0, 0.12, 0], [1, 1, 1])));
+    writeInstanceBatch(poleRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0, 1.48, 0], [1, 1, 1])));
+    writeInstanceBatch(collarRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0, 2.72, 0], [1, 1, 1])));
+    writeInstanceBatch(armRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0.26, 2.82, 0], [1, 1, 1], [0, 0, -Math.PI / 2 + 0.18])));
+    writeInstanceBatch(housingRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0.57, 2.70, 0], [1, 1, 1], [0, 0, -0.04])));
+    writeInstanceBatch(diffuserRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0.57, 2.615, 0], [1, 1, 1])));
+    writeInstanceBatch(capRef, LAMP_LAYOUT.map((lamp) => part(lamp, [0.57, 2.79, 0], [1, 1, 1])));
+  }, []);
+
+  return (
+    <>
+      <instancedMesh ref={baseRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <cylinderGeometry args={[0.19, 0.23, 0.24, 10]} /><meshStandardMaterial color="#454d54" roughness={0.72} metalness={0.58} />
+      </instancedMesh>
+      <instancedMesh ref={poleRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <cylinderGeometry args={[0.038, 0.073, 2.75, 9]} /><meshStandardMaterial color="#30383f" roughness={0.58} metalness={0.72} />
+      </instancedMesh>
+      <instancedMesh ref={collarRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <cylinderGeometry args={[0.078, 0.052, 0.15, 9]} /><meshStandardMaterial color="#66717a" roughness={0.5} metalness={0.72} />
+      </instancedMesh>
+      <instancedMesh ref={armRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <cylinderGeometry args={[0.035, 0.045, 0.58, 8]} /><meshStandardMaterial color="#30383f" roughness={0.52} metalness={0.72} />
+      </instancedMesh>
+      <instancedMesh ref={housingRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <boxGeometry args={[0.64, 0.14, 0.28]} /><meshStandardMaterial color="#252d34" roughness={0.42} metalness={0.58} />
+      </instancedMesh>
+      <instancedMesh ref={diffuserRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <boxGeometry args={[0.48, 0.025, 0.19]} />
+        <meshStandardMaterial color="#fff0c2" emissive="#ffd98a" emissiveIntensity={lampIntensity} roughness={0.32} />
+      </instancedMesh>
+      <instancedMesh ref={capRef} args={[null, null, LAMP_LAYOUT.length]}>
+        <boxGeometry args={[0.52, 0.035, 0.22]} /><meshStandardMaterial color="#66717a" roughness={0.48} metalness={0.62} />
+      </instancedMesh>
+    </>
+  );
+}
+
+const TREE_LAYOUT = [
+  // Along the main east-west corridors
+  [-34, 0, 17], [-25, 0, 17], [-14, 0, 17], [15, 0, 17], [29, 0, 17], [52, 0, 17], [67, 0, 17], [80, 0, 17],
+  [-34, 0, -17], [-24, 0, -17], [-13, 0, -17], [15, 0, -17], [30, 0, -17], [53, 0, -17], [68, 0, -17], [80, 0, -17],
+  // Small landscaped groups around the outer north/south approaches
+  [-7, 0, -62], [-7, 0, -39], [47, 0, -62], [47, 0, -39],
+  [-7, 0, 39], [-7, 0, 62], [47, 0, 39], [47, 0, 62],
+];
+
+const BUILDING_LAYOUT = [
+  { position: [-35, 0, 28], width: 5.8, depth: 4.8, height: 6.8, variant: 0, rotation: Math.PI },
+  { position: [-26, 0, 29], width: 4.4, depth: 4.2, height: 4.8, variant: 1, rotation: Math.PI },
+  { position: [22, 0, 29], width: 5.4, depth: 4.7, height: 6.0, variant: 2, rotation: Math.PI },
+  { position: [31, 0, 28], width: 4.6, depth: 4.3, height: 5.0, variant: 3, rotation: Math.PI },
+  { position: [-35, 0, -28], width: 5.0, depth: 4.4, height: 5.8, variant: 2, rotation: 0 },
+  { position: [30, 0, -28], width: 5.5, depth: 4.6, height: 6.3, variant: 1, rotation: 0 },
+  { position: [-44, 0, 31], width: 4.8, depth: 4.2, height: 4.6, variant: 4, rotation: Math.PI },
+  { position: [-15, 0, 32], width: 5.0, depth: 4.7, height: 5.8, variant: 3, rotation: Math.PI },
+  { position: [11, 0, 32], width: 5.1, depth: 4.8, height: 7.4, variant: 0, rotation: Math.PI },
+  { position: [53, 0, 32], width: 5.8, depth: 4.5, height: 6.4, variant: 2, rotation: Math.PI },
+  { position: [69, 0, 31], width: 5.0, depth: 4.4, height: 5.2, variant: 1, rotation: Math.PI },
+  { position: [-16, 0, -32], width: 5.2, depth: 4.7, height: 6.6, variant: 4, rotation: 0 },
+  { position: [11, 0, -32], width: 5.0, depth: 4.4, height: 5.4, variant: 1, rotation: 0 },
+  { position: [54, 0, -32], width: 5.3, depth: 4.7, height: 7.2, variant: 3, rotation: 0 },
+  // Buildings beside the north/south approaches, facing the street
+  { position: [-8, 0, -48], width: 5.5, depth: 5.0, height: 6.0, variant: 2, rotation: Math.PI / 2 },
+  { position: [48, 0, -48], width: 5.4, depth: 5.0, height: 5.0, variant: 0, rotation: -Math.PI / 2 },
+  { position: [-8, 0, 48], width: 5.5, depth: 5.0, height: 5.8, variant: 3, rotation: Math.PI / 2 },
+  { position: [48, 0, 48], width: 5.6, depth: 5.0, height: 6.8, variant: 4, rotation: -Math.PI / 2 },
+];
+
+const LAMP_LAYOUT = [
+  // Existing central fixtures plus additional fixtures along both road axes
+  { position: [-24, 0, 8], rotation: 0.15, scale: 0.95 },
+  { position: [8, 0, 8], rotation: Math.PI, scale: 0.95 },
+  { position: [-24, 0, -8], rotation: -0.15, scale: 0.9 },
+  { position: [8, 0, -8], rotation: Math.PI + 0.15, scale: 0.9 },
+  ...[-42, -18, 22, 62, 84].flatMap((x) => [
+    { position: [x, 0, 23.3], rotation: Math.PI / 2, scale: 0.92 },
+    { position: [x, 0, -23.3], rotation: -Math.PI / 2, scale: 0.92 },
+  ]),
+  ...[-58, -38, 38, 58].flatMap((z) => [
+    { position: [-3.0, 0, z], rotation: 0, scale: 0.9 },
+    { position: [43.0, 0, z], rotation: Math.PI, scale: 0.9 },
+  ]),
+];
+
+function SceneEnvironment({ windowEmissive, lampIntensity = 1.4 }) {
+  return (
+    <>
+      <EnvironmentTreeField />
+      <EnvironmentBuildingField windowEmissive={windowEmissive} />
+      <StreetLampField lampIntensity={lampIntensity} />
     </>
   );
 }
@@ -884,70 +1135,86 @@ function IntersectionLoadRing({ id, position, marl }) {
 }
 
 // ============================================================
-// CAMERA CONTROLLER (SMOOTH PRESETS & FOLLOW VEHICLE)
+// TRAFFIC SCENE
 // ============================================================
 
-function CameraController({ presetKey, selectedVehicle, followVehicle, controlsRef }) {
-  const desiredPos = useRef(new THREE.Vector3(20, 42, 62));
-  const desiredTarget = useRef(new THREE.Vector3(20, 0, 0));
-  const isTransitioning = useRef(false);
+const StaticInfrastructure = React.memo(function StaticInfrastructure({ theme }) {
+  return (
+    <>
+      <ambientLight intensity={theme.ambient} />
 
-  useEffect(() => {
-    const preset = CAMERA_PRESETS[presetKey] || CAMERA_PRESETS.ORBIT;
-    desiredPos.current.set(...preset.position);
-    desiredTarget.current.set(...preset.target);
-    isTransitioning.current = true;
-  }, [presetKey]);
+      <directionalLight
+        castShadow
+        position={[25, 50, 30]}
+        intensity={theme.dirIntensity}
+        color={theme.dirColor}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-65}
+        shadow-camera-right={65}
+        shadow-camera-top={65}
+        shadow-camera-bottom={-65}
+      />
 
-  useFrame((state, delta) => {
-    if (!controlsRef.current) return;
+      <hemisphereLight
+        intensity={theme.hemiIntensity}
+        groundColor={theme.groundColor}
+        skyColor={theme.skyColor}
+      />
 
-    if (followVehicle && selectedVehicle) {
-      const vx = Number(selectedVehicle.renderX ?? 0);
-      const vz = Number(selectedVehicle.renderZ ?? 0);
-      const targetVec = new THREE.Vector3(vx, 0.4, vz);
-      controlsRef.current.target.lerp(targetVec, 1 - Math.exp(-8 * delta));
-      controlsRef.current.update();
-      return;
-    }
+      <Ground color={theme.groundColor} />
+      <SceneEnvironment windowEmissive={theme.windowEmissive} lampIntensity={theme.lampIntensity} />
 
-    if (isTransitioning.current) {
-      const step = 1 - Math.exp(-6 * delta);
-      state.camera.position.lerp(desiredPos.current, step);
-      controlsRef.current.target.lerp(desiredTarget.current, step);
-      controlsRef.current.update();
 
-      if (
-        state.camera.position.distanceTo(desiredPos.current) < 0.15 &&
-        controlsRef.current.target.distanceTo(desiredTarget.current) < 0.15
-      ) {
-        isTransitioning.current = false;
+      {ROAD_SEGMENTS.map((road) => (
+        <Road key={road.name} from={road.from} to={road.to} />
+      ))}
+
+    </>
+  );
+});
+
+function TrafficScene({
+  data,
+  liveDataRef,
+  theme,
+  selectedVehicleId,
+  onSelectVehicle,
+}) {
+  const allVehicles = data?.vehicles || [];
+  const vehiclePoolRef = useRef(new Map());
+  const vehicleRegistryRef = useRef(new Map());
+  const simulationSpeedRef = useRef(1);
+  const lastLivePacketRef = useRef(null);
+  const currentVehiclesById = new Map();
+
+  useFrame(() => {
+    const packet = liveDataRef?.current;
+    if (!packet || packet === lastLivePacketRef.current) return;
+    lastLivePacketRef.current = packet;
+    simulationSpeedRef.current = THREE.MathUtils.clamp(
+      Number(packet.speedMultiplier || 1),
+      0.25,
+      4
+    );
+    const latestVehicles = packet.vehicles || [];
+    for (const liveVehicle of latestVehicles) {
+      const id = String(liveVehicle?.id ?? "");
+      if (id && vehiclePoolRef.current.has(id)) {
+        vehicleRegistryRef.current.set(id, liveVehicle);
       }
     }
   });
 
-  return null;
-}
-
-// ============================================================
-// TRAFFIC SCENE
-// ============================================================
-
-function TrafficScene({
-  data,
-  theme,
-  selectedVehicleId,
-  onSelectVehicle,
-  onSelectIntersection,
-}) {
-  const allVehicles = data?.vehicles || [];
-  const vehiclePoolRef = useRef(new Map());
-  const currentVehiclesById = new Map();
-
   allVehicles.forEach((vehicle) => {
     if (vehicle?.id != null) {
       currentVehiclesById.set(String(vehicle.id), vehicle);
+      vehicleRegistryRef.current.set(String(vehicle.id), vehicle);
     }
+  });
+
+  vehicleRegistryRef.current.forEach((_, id) => {
+    if (!currentVehiclesById.has(id)) vehicleRegistryRef.current.delete(id);
   });
 
   vehiclePoolRef.current.forEach((_, id) => {
@@ -978,46 +1245,11 @@ function TrafficScene({
 
   return (
     <>
-      <ambientLight intensity={theme.ambient} />
-
-      <directionalLight
-        castShadow
-        position={[25, 50, 30]}
-        intensity={theme.dirIntensity}
-        color={theme.dirColor}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-65}
-        shadow-camera-right={65}
-        shadow-camera-top={65}
-        shadow-camera-bottom={-65}
-      />
-
-      <hemisphereLight
-        intensity={theme.hemiIntensity}
-        groundColor={theme.groundColor}
-        skyColor={theme.skyColor}
-      />
-
-      <Ground color={theme.groundColor} />
-      <SceneEnvironment windowEmissive={theme.windowEmissive} />
-
-      <StreetLamp position={[-24, 0, 8]} rotation={0.15} scale={0.95} lampIntensity={theme.lampIntensity} />
-      <StreetLamp position={[8, 0, 8]} rotation={Math.PI} scale={0.95} lampIntensity={theme.lampIntensity} />
-      <StreetLamp position={[-24, 0, -8]} rotation={-0.15} scale={0.9} lampIntensity={theme.lampIntensity} />
-      <StreetLamp position={[8, 0, -8]} rotation={Math.PI + 0.15} scale={0.9} lampIntensity={theme.lampIntensity} />
-
-      {ROAD_SEGMENTS.map((road) => (
-        <Road key={road.name} from={road.from} to={road.to} />
-      ))}
+      <StaticInfrastructure theme={theme} />
 
       {Object.entries(INTERSECTIONS).map(([id, position]) => (
         <React.Fragment key={id}>
-          <Intersection
-            id={id}
-            position={position}
-            onSelectIntersection={onSelectIntersection}
-          />
+          <Intersection id={id} position={position} />
           <IntersectionLights id={id} trafficLights={trafficLights} />
           <IntersectionLoadRing id={id} position={position} marl={marl} />
         </React.Fragment>
@@ -1027,7 +1259,9 @@ function TrafficScene({
         {vehicles.map((vehicle) => (
           <Vehicle
             key={vehicle.id}
-            vehicle={vehicle}
+            vehicleId={String(vehicle.id)}
+            vehicleRegistryRef={vehicleRegistryRef}
+            simulationSpeedRef={simulationSpeedRef}
             isSelected={selectedVehicleId === vehicle.id}
             onSelect={onSelectVehicle}
           />
@@ -1053,7 +1287,7 @@ function KpiCard({ label, value, suffix = "" }) {
   );
 }
 
-function AgentCard({ agent, onFocus }) {
+function AgentCard({ agent }) {
   if (!agent) {
     return (
       <div className="agent-card">
@@ -1069,11 +1303,7 @@ function AgentCard({ agent, onFocus }) {
   const minGreenPct = Math.min(100, Math.round((10 / duration) * 100));
 
   return (
-    <div
-      className="agent-card clickable"
-      onClick={() => onFocus && onFocus(agent.id)}
-      title={`Click to focus camera on ${agent.id}`}
-    >
+    <div className="agent-card">
       <div className="agent-top">
         <div className="agent-name">
           {agent.id} <span className="phase-badge">P{agent.phase ?? 0}</span>
@@ -1129,14 +1359,13 @@ function Dashboard({
   data,
   connected,
   sendCommand,
-  presetKey,
-  setPresetKey,
   themeKey,
   setThemeKey,
   selectedVehicle,
   setSelectedVehicleId,
-  followVehicle,
-  setFollowVehicle,
+  onOpenAnalytics,
+  cameraPreset,
+  setCameraPreset,
 }) {
   const allVehicles = data?.vehicles || [];
   const marl = data?.marl || [];
@@ -1214,6 +1443,25 @@ function Dashboard({
           >
             ↺ RESET
           </button>
+          <div className="camera-picker" aria-label="Camera viewpoint">
+            <span>VIEW</span>
+            <select
+              value={cameraPreset}
+              onChange={(event) => setCameraPreset(event.target.value)}
+              aria-label="Choose camera viewpoint"
+              title="Switch between overview and individual intersections"
+            >
+              {Object.entries(CAMERA_PRESETS).map(([key, preset]) => (
+                <option key={key} value={key}>{preset.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="theme-picker" aria-label="Lighting theme">
+            {Object.entries(THEMES).map(([key]) => (
+              <button key={key} className={`theme-chip ${themeKey === key ? "active" : ""}`} onClick={() => setThemeKey(key)}>{key}</button>
+            ))}
+          </div>
+          <button className="toolbar-btn analytics-nav-btn" onClick={onOpenAnalytics}>▥ ANALYTICS</button>
         </div>
 
         <div className={connected ? "live-indicator" : "offline-indicator"}>
@@ -1229,44 +1477,11 @@ function Dashboard({
           value={Number(data?.simulationTime || 0).toFixed(1)}
           suffix=" s"
         />
-        <KpiCard label="ACTIVE VEHICLES" value={allVehicles.length} />
+        <KpiCard label="ACTIVE VEHICLES" value={Number(data?.vehicleCount ?? allVehicles.length)} />
         <KpiCard label="AVG SPEED" value={(averageSpeed * 3.6).toFixed(1)} suffix=" km/h" />
         <KpiCard label="THROUGHPUT" value={arrivedTotal} suffix=" arrived" />
         <KpiCard label="TOTAL QUEUE" value={Math.round(totalQueue)} />
         <KpiCard label="WAITING TIME" value={Math.round(totalWaiting)} suffix=" s" />
-      </div>
-
-      {/* CAMERA & LIGHTING PRESETS PANEL */}
-      <div className="camera-controls-panel">
-        <div className="camera-controls-title">CAMERA PRESETS</div>
-        <div className="camera-controls-hint">Click a view or any junction</div>
-        {Object.entries(CAMERA_PRESETS).map(([key, item]) => (
-          <button
-            key={key}
-            className={`camera-btn ${presetKey === key ? "active" : ""}`}
-            onClick={() => {
-              setFollowVehicle(false);
-              setPresetKey(key);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-
-        <div className="camera-controls-title" style={{ marginTop: "12px" }}>
-          LIGHTING THEME
-        </div>
-        <div className="theme-row">
-          {Object.entries(THEMES).map(([k, t]) => (
-            <button
-              key={k}
-              className={`theme-btn ${themeKey === k ? "active" : ""}`}
-              onClick={() => setThemeKey(k)}
-            >
-              {k}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* VEHICLE INSPECTOR POPUP (WHEN A VEHICLE IS CLICKED) */}
@@ -1279,10 +1494,7 @@ function Dashboard({
             </div>
             <button
               className="inspector-close"
-              onClick={() => {
-                setSelectedVehicleId(null);
-                setFollowVehicle(false);
-              }}
+              onClick={() => setSelectedVehicleId(null)}
             >
               ✕
             </button>
@@ -1315,13 +1527,6 @@ function Dashboard({
               </strong>
             </div>
           </div>
-          <button
-            className={`camera-btn ${followVehicle ? "active" : ""}`}
-            style={{ marginTop: "10px" }}
-            onClick={() => setFollowVehicle(!followVehicle)}
-          >
-            {followVehicle ? "● FOLLOWING VEHICLE" : "🎯 LOCK CAMERA ON VEHICLE"}
-          </button>
         </div>
       )}
 
@@ -1333,10 +1538,10 @@ function Dashboard({
         </div>
 
         <div className="agents-grid">
-          <AgentCard agent={agents.I1} onFocus={(id) => setPresetKey(id)} />
-          <AgentCard agent={agents.I2} onFocus={(id) => setPresetKey(id)} />
-          <AgentCard agent={agents.I3} onFocus={(id) => setPresetKey(id)} />
-          <AgentCard agent={agents.I4} onFocus={(id) => setPresetKey(id)} />
+          <AgentCard agent={agents.I1} />
+          <AgentCard agent={agents.I2} />
+          <AgentCard agent={agents.I3} />
+          <AgentCard agent={agents.I4} />
         </div>
       </div>
     </div>
@@ -1546,54 +1751,6 @@ function GlobalStyles() {
         color: #84909c;
       }
 
-      .camera-controls-panel {
-        position: absolute;
-        top: 110px;
-        right: 22px;
-        width: 185px;
-        padding: 12px;
-        border-radius: 15px;
-        background: rgba(8, 13, 17, 0.94);
-        border: 1px solid rgba(255, 255, 255, 0.09);
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(10px);
-        pointer-events: auto;
-      }
-      .camera-controls-title {
-        margin: 1px 3px 6px;
-        color: #7f8b97;
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.12em;
-      }
-      .camera-controls-hint {
-        margin: 2px 3px 7px;
-        font-size: 8px;
-        color: #687582;
-      }
-      .camera-btn {
-        width: 100%;
-        margin-top: 5px;
-        padding: 7px 8px;
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.035);
-        color: #aeb8c2;
-        font-size: 9px;
-        font-weight: 800;
-        cursor: pointer;
-        text-align: left;
-      }
-      .camera-btn:hover {
-        background: rgba(255, 255, 255, 0.09);
-        color: #ffffff;
-      }
-      .camera-btn.active {
-        color: #ffffff;
-        background: rgba(0, 232, 160, 0.16);
-        border-color: rgba(0, 232, 160, 0.4);
-      }
-
       .theme-row {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -1789,6 +1946,71 @@ function GlobalStyles() {
         font-size: 12px;
       }
 
+      .camera-picker {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 4px 7px 4px 9px;
+        border: 1px solid rgba(95, 178, 255, .28);
+        border-radius: 9px;
+        background: rgba(45, 115, 175, .10);
+      }
+      .camera-picker span {
+        color: #80b9e8;
+        font-size: 8px;
+        font-weight: 900;
+        letter-spacing: .10em;
+      }
+      .camera-picker select {
+        max-width: 132px;
+        padding: 5px 21px 5px 7px;
+        border: 1px solid rgba(255,255,255,.10);
+        border-radius: 6px;
+        outline: none;
+        color: #eaf5ff;
+        background: #17232d;
+        font-size: 9px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+      .camera-picker select:focus-visible {
+        border-color: rgba(95, 178, 255, .75);
+        box-shadow: 0 0 0 2px rgba(95, 178, 255, .16);
+      }
+      .camera-picker option {
+        color: #eaf5ff;
+        background: #17232d;
+      }
+
+      .theme-picker {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px;
+        border: 1px solid rgba(255,255,255,.09);
+        border-radius: 9px;
+        background: rgba(0,0,0,.18);
+      }
+      .theme-chip {
+        border: 0;
+        border-radius: 6px;
+        padding: 6px 7px;
+        color: #8290a0;
+        background: transparent;
+        font-size: 8px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .theme-chip.active {
+        color: #eafff5;
+        background: rgba(82,214,162,.16);
+      }
+      .analytics-nav-btn {
+        color: #72e3b5;
+        border-color: rgba(82,214,162,.3);
+        background: rgba(82,214,162,.08);
+      }
+
       .final-status-strip {
         position: absolute;
         left: 22px;
@@ -1828,65 +2050,122 @@ function GlobalStyles() {
 }
 
 // ============================================================
+// CAMERA PRESET ANIMATOR
+// ============================================================
+
+function CameraPresetAnimator({ presetKey, controlsRef }) {
+  const { camera } = useThree();
+  const animationRef = useRef(null);
+
+  useEffect(() => {
+    const preset = CAMERA_PRESETS[presetKey];
+    if (!preset) return;
+
+    const controls = controlsRef.current;
+    const currentTarget = controls?.target?.clone
+      ? controls.target.clone()
+      : new THREE.Vector3(20, 0, 0);
+
+    animationRef.current = {
+      elapsed: 0,
+      duration: 0.9,
+      fromPosition: camera.position.clone(),
+      toPosition: new THREE.Vector3(...preset.position),
+      fromTarget: currentTarget,
+      toTarget: new THREE.Vector3(...preset.target),
+    };
+  }, [presetKey, camera, controlsRef]);
+
+  useFrame((_, delta) => {
+    const animation = animationRef.current;
+    if (!animation) return;
+
+    animation.elapsed = Math.min(animation.duration, animation.elapsed + Math.min(delta, 0.05));
+    const progress = animation.elapsed / animation.duration;
+    const eased = progress * progress * (3 - 2 * progress);
+
+    camera.position.lerpVectors(animation.fromPosition, animation.toPosition, eased);
+
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.target.lerpVectors(animation.fromTarget, animation.toTarget, eased);
+      controls.update();
+    } else {
+      camera.lookAt(animation.toTarget);
+    }
+
+    if (progress >= 1) animationRef.current = null;
+  });
+
+  return null;
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 
 export default function App() {
   const [data, setData] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [presetKey, setPresetKey] = useState("ORBIT");
   const [themeKey, setThemeKey] = useState("DAY");
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
-  const [followVehicle, setFollowVehicle] = useState(false);
+  const [activePage, setActivePage] = useState("simulation");
+  const [cameraPreset, setCameraPreset] = useState("OVERVIEW");
 
+  const controlsRef = useRef(null);
   const socketRef = useRef(null);
   const reconnectTimer = useRef(null);
-  const controlsRef = useRef(null);
+  const pendingDataRef = useRef(null);
+  const liveDataRef = useRef(null);
 
-  const sendCommand = (payload) => {
+  const sendCommand = useCallback((payload) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(payload));
     }
-  };
+  }, []);
+
+  const handleSelectVehicle = useCallback((id) => setSelectedVehicleId(id), []);
 
   useEffect(() => {
     let cancelled = false;
-
     const connect = () => {
       if (cancelled) return;
       try {
         const socket = new WebSocket(WS_URL);
         socketRef.current = socket;
-
-        socket.onopen = () => {
-          setConnected(true);
-        };
-
+        socket.onopen = () => setConnected(true);
         socket.onmessage = (event) => {
           try {
             const incoming = JSON.parse(event.data);
-            setData(incoming);
+            // The WebSocket remains live at the backend's full telemetry rate,
+            // while React publishes only the newest snapshot to the HUD at 10 Hz.
+            // Vehicle transforms interpolate independently between these snapshots.
+            liveDataRef.current = incoming;
+            pendingDataRef.current = incoming;
           } catch (error) {
             console.error("Invalid WebSocket data:", error);
           }
         };
-
         socket.onclose = () => {
           setConnected(false);
-          if (!cancelled) {
-            reconnectTimer.current = setTimeout(connect, 2000);
-          }
+          if (!cancelled) reconnectTimer.current = setTimeout(connect, 2000);
         };
+        socket.onerror = () => setConnected(false);
       } catch (error) {
         setConnected(false);
         reconnectTimer.current = setTimeout(connect, 2000);
       }
     };
-
     connect();
-
+    const uiTimer = setInterval(() => {
+      if (pendingDataRef.current) {
+        setData(pendingDataRef.current);
+        pendingDataRef.current = null;
+      }
+    }, 100);
     return () => {
       cancelled = true;
+      clearInterval(uiTimer);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (socketRef.current) socketRef.current.close();
     };
@@ -1895,48 +2174,37 @@ export default function App() {
   const theme = THEMES[themeKey] || THEMES.DAY;
   const selectedVehicle = useMemo(() => {
     if (!selectedVehicleId || !data?.vehicles) return null;
-    return data.vehicles.find((v) => v.id === selectedVehicleId) || null;
+    return data.vehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;
   }, [selectedVehicleId, data]);
+
+  if (activePage === "analytics") {
+    return (
+      <>
+        <GlobalStyles />
+        <AnalyticsPage liveData={data} connected={connected} onBack={() => setActivePage("simulation")} />
+      </>
+    );
+  }
 
   return (
     <>
       <GlobalStyles />
-
       <Canvas
         shadows
-        camera={{
-          position: [20, 42, 62],
-          fov: 40,
-          near: 0.1,
-          far: 500,
-        }}
-        gl={{
-          antialias: true,
-          powerPreference: "high-performance",
-        }}
-        dpr={[1, 1.5]}
+        camera={{ position: [20, 42, 62], fov: 40, near: 0.1, far: 500 }}
+        gl={{ antialias: true, powerPreference: "high-performance", alpha: false, toneMapping: THREE.ACESFilmicToneMapping }}
+        dpr={[1, 1.25]}
       >
         <color attach="background" args={[theme.bg]} />
         <fog attach="fog" args={[theme.fogColor, 75, 185]} />
-
-        <CameraController
-          presetKey={presetKey}
-          selectedVehicle={selectedVehicle}
-          followVehicle={followVehicle}
-          controlsRef={controlsRef}
-        />
-
         <TrafficScene
           data={data}
+          liveDataRef={liveDataRef}
           theme={theme}
           selectedVehicleId={selectedVehicleId}
-          onSelectVehicle={(id) => setSelectedVehicleId(id)}
-          onSelectIntersection={(id) => {
-            setFollowVehicle(false);
-            setPresetKey(id);
-          }}
+          onSelectVehicle={handleSelectVehicle}
         />
-
+        <CameraPresetAnimator presetKey={cameraPreset} controlsRef={controlsRef} />
         <OrbitControls
           ref={controlsRef}
           makeDefault
@@ -1944,49 +2212,37 @@ export default function App() {
           enablePan
           enableZoom
           enableDamping
-          dampingFactor={0.06}
-          rotateSpeed={0.85}
-          panSpeed={1.15}
-          zoomSpeed={1.35}
+          dampingFactor={0.07}
+          rotateSpeed={0.8}
+          panSpeed={1.05}
+          zoomSpeed={1.15}
           minDistance={1.5}
           maxDistance={220}
-          minPolarAngle={0.05}
-          maxPolarAngle={Math.PI / 2 - 0.03}
-          screenSpacePanning={true}
+          minPolarAngle={0.04}
+          maxPolarAngle={Math.PI / 2 - 0.025}
+          target={[20, 0, 0]}
+          screenSpacePanning
+          mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}
+          touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
         />
       </Canvas>
-
       <Dashboard
         data={data}
         connected={connected}
         sendCommand={sendCommand}
-        presetKey={presetKey}
-        setPresetKey={setPresetKey}
         themeKey={themeKey}
         setThemeKey={setThemeKey}
         selectedVehicle={selectedVehicle}
         setSelectedVehicleId={setSelectedVehicleId}
-        followVehicle={followVehicle}
-        setFollowVehicle={setFollowVehicle}
+        onOpenAnalytics={() => setActivePage("analytics")}
+        cameraPreset={cameraPreset}
+        setCameraPreset={setCameraPreset}
       />
-
       <div className="final-status-strip">
-        <div className="final-status-item">
-          <span className="status-dot" />
-          <span>SUMO LIVE</span>
-        </div>
-        <div className="final-status-item">
-          <span>CONTROL</span>
-          <strong>{data?.controlMode || "INDEPENDENT DQN MARL"}</strong>
-        </div>
-        <div className="final-status-item">
-          <span>THEME</span>
-          <strong>{theme.label.toUpperCase()}</strong>
-        </div>
-        <div className="final-status-item">
-          <span>CAMERA</span>
-          <strong>{CAMERA_PRESETS[presetKey]?.label.toUpperCase()}</strong>
-        </div>
+        <div className="final-status-item"><span className="status-dot" /><span>SUMO LIVE</span></div>
+        <div className="final-status-item"><span>CONTROL</span><strong>{data?.controlMode || "INDEPENDENT DQN MARL"}</strong></div>
+        <div className="final-status-item"><span>THEME</span><strong>{theme.label.toUpperCase()}</strong></div>
+        <div className="final-status-item"><span>CAMERA</span><strong>{CAMERA_PRESETS[cameraPreset]?.label || "OVERVIEW"} • FREE ORBIT</strong></div>
       </div>
     </>
   );

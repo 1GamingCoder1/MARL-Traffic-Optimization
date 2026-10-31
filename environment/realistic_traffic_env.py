@@ -52,6 +52,7 @@ class RealisticTrafficEnv:
         }
 
         self.started = False
+        self._tls_edge_cache = {}
 
 
     # ============================================================
@@ -88,16 +89,14 @@ class RealisticTrafficEnv:
 
         current_time = traci.simulation.getTime()
 
+        self._tls_edge_cache = {}
         for tls in self.tls_ids:
-
             try:
-                self.previous_phase[tls] = (
-                    traci.trafficlight.getPhase(tls)
-                )
+                self.previous_phase[tls] = traci.trafficlight.getPhase(tls)
             except Exception:
                 self.previous_phase[tls] = 0
-
             self.phase_start_time[tls] = current_time
+            self._tls_edge_cache[tls] = self._discover_tls_edges(tls)
 
         print("SUMO connected successfully.")
 
@@ -106,38 +105,61 @@ class RealisticTrafficEnv:
     # GET VEHICLES AROUND INTERSECTION
     # ============================================================
 
-    def _get_tls_edges(self, tls_id):
-
-        controlled_links = traci.trafficlight.getControlledLinks(
-            tls_id
-        )
-
+    def _discover_tls_edges(self, tls_id):
+        """Resolve incoming road edges once per SUMO session."""
+        controlled_links = traci.trafficlight.getControlledLinks(tls_id)
         edges = set()
-
         for group in controlled_links:
-
             if not group:
                 continue
-
             for link in group:
-
                 if not link:
                     continue
-
-                incoming_lane = link[0]
-
                 try:
-                    edge = traci.lane.getEdgeID(
-                        incoming_lane
-                    )
-
-                    if not edge.startswith(":"):
+                    edge = traci.lane.getEdgeID(link[0])
+                    if edge and not edge.startswith(":"):
                         edges.add(edge)
-
                 except Exception:
-                    pass
+                    continue
+        return tuple(sorted(edges))
 
-        return list(edges)
+    def _get_tls_edges(self, tls_id):
+        if tls_id not in self._tls_edge_cache:
+            try:
+                self._tls_edge_cache[tls_id] = self._discover_tls_edges(tls_id)
+            except Exception:
+                self._tls_edge_cache[tls_id] = tuple()
+        return self._tls_edge_cache[tls_id]
+
+    def get_metrics(self, tls_id):
+        """Collect queue, accumulated waiting and vehicle count in one edge pass."""
+        queue = 0.0
+        waiting = 0.0
+        vehicles = set()
+        for edge in self._get_tls_edges(tls_id):
+            try:
+                lane_count = traci.edge.getLaneNumber(edge)
+                for lane_index in range(lane_count):
+                    lane_id = f"{edge}_{lane_index}"
+                    queue += float(traci.lane.getLastStepHaltingNumber(lane_id))
+            except Exception:
+                pass
+            try:
+                edge_vehicles = traci.edge.getLastStepVehicleIDs(edge)
+                for vehicle_id in edge_vehicles:
+                    vehicles.add(vehicle_id)
+            except Exception:
+                pass
+        for vehicle_id in vehicles:
+            try:
+                waiting += float(traci.vehicle.getAccumulatedWaitingTime(vehicle_id))
+            except Exception:
+                continue
+        return {
+            "queue": float(queue),
+            "waiting": float(waiting),
+            "vehicles": len(vehicles),
+        }
 
 
     # ============================================================
@@ -145,125 +167,41 @@ class RealisticTrafficEnv:
     # ============================================================
 
     def get_queue(self, tls_id):
-
-        edges = self._get_tls_edges(tls_id)
-
-        queue = 0
-
-        for edge in edges:
-
-            try:
-
-                lanes = traci.edge.getLaneNumber(edge)
-
-                for lane_index in range(lanes):
-
-                    lane_id = f"{edge}_{lane_index}"
-
-                    halting = traci.lane.getLastStepHaltingNumber(
-                        lane_id
-                    )
-
-                    queue += halting
-
-            except Exception:
-                continue
-
-        return float(queue)
-
-
-    # ============================================================
-    # WAITING TIME
-    # ============================================================
+        return self.get_metrics(tls_id)["queue"]
 
     def get_waiting_time(self, tls_id):
-
-        edges = self._get_tls_edges(tls_id)
-
-        waiting = 0.0
-
-        counted = set()
-
-        for edge in edges:
-
-            try:
-
-                vehicle_ids = traci.edge.getLastStepVehicleIDs(
-                    edge
-                )
-
-            except Exception:
-
-                continue
-
-            for vehicle_id in vehicle_ids:
-
-                if vehicle_id in counted:
-                    continue
-
-                counted.add(vehicle_id)
-
-                try:
-
-                    waiting += traci.vehicle.getAccumulatedWaitingTime(
-                        vehicle_id
-                    )
-
-                except Exception:
-                    pass
-
-        return float(waiting)
-
-
-    # ============================================================
-    # VEHICLE COUNT
-    # ============================================================
+        return self.get_metrics(tls_id)["waiting"]
 
     def get_vehicle_count(self, tls_id):
-
-        edges = self._get_tls_edges(tls_id)
-
-        vehicles = set()
-
-        for edge in edges:
-
-            try:
-
-                ids = traci.edge.getLastStepVehicleIDs(
-                    edge
-                )
-
-                vehicles.update(ids)
-
-            except Exception:
-                pass
-
-        return len(vehicles)
+        return self.get_metrics(tls_id)["vehicles"]
 
 
     # ============================================================
     # STATE
     # ============================================================
 
-    def get_state(self, tls_id):
+    def get_state(self, tls_id, metrics=None):
 
-        queue = self.get_queue(tls_id)
-
-        waiting = self.get_waiting_time(tls_id)
-
-        vehicle_count = self.get_vehicle_count(tls_id)
+        metrics = metrics or self.get_metrics(tls_id)
+        queue = metrics["queue"]
+        waiting = metrics["waiting"]
+        vehicle_count = metrics["vehicles"]
 
         try:
-            phase = traci.trafficlight.getPhase(tls_id)
+            phase = int(traci.trafficlight.getPhase(tls_id))
         except Exception:
-            phase = 0
+            phase = int(self.previous_phase.get(tls_id, 0))
 
-        current_time = traci.simulation.getTime()
+        current_time = float(traci.simulation.getTime())
 
-        phase_time = (
-            current_time -
-            self.phase_start_time[tls_id]
-        )
+        # SUMO advances through programmed green/yellow phases automatically.
+        # Keep the observation's phase timer synchronized with those transitions,
+        # not only with explicit agent-issued switches.
+        if phase != self.previous_phase.get(tls_id, phase):
+            self.previous_phase[tls_id] = phase
+            self.phase_start_time[tls_id] = current_time
+
+        phase_time = max(0.0, current_time - self.phase_start_time[tls_id])
 
     # --------------------------------------------------------
     # NORMALIZATION
@@ -434,19 +372,14 @@ class RealisticTrafficEnv:
         # CALCULATE REWARDS
         # --------------------------------------------------------
 
+        step_metrics = {}
         for tls_id in self.tls_ids:
 
-            queue = self.get_queue(
-                tls_id
-            )
-
-            waiting = self.get_waiting_time(
-                tls_id
-            )
-
-            vehicle_count = self.get_vehicle_count(
-                tls_id
-            )
+            metrics = self.get_metrics(tls_id)
+            step_metrics[tls_id] = metrics
+            queue = metrics["queue"]
+            waiting = metrics["waiting"]
+            vehicle_count = metrics["vehicles"]
 
             previous_waiting = (
                 self.previous_waiting[tls_id]
@@ -492,7 +425,8 @@ class RealisticTrafficEnv:
         for tls_id in self.tls_ids:
 
             next_states[tls_id] = self.get_state(
-                tls_id
+                tls_id,
+                metrics=step_metrics.get(tls_id)
             )
 
 
@@ -552,6 +486,7 @@ class RealisticTrafficEnv:
             tls: 0
             for tls in self.tls_ids
         }
+        self._tls_edge_cache = {}
 
         self.start()
 
